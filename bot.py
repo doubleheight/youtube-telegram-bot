@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 import yt_dlp
+from aiohttp import web
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
 from dotenv import load_dotenv
@@ -11,6 +12,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+PORT = int(os.getenv("PORT", "10000"))
+WEBHOOK_PATH = "/webhook"
 
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN не найден")
@@ -49,7 +52,7 @@ def download_video(url: str) -> Path:
     files = list(DOWNLOAD_DIR.glob(f"{video_id}.*"))
 
     if not files:
-        raise FileNotFoundError("Видео не найдено после скачивания")
+        raise FileNotFoundError("Видео не найдено")
 
     return files[0]
 
@@ -58,8 +61,8 @@ def download_video(url: str) -> Path:
 async def start(message: types.Message):
     await message.answer(
         "🎬 Привет!\n\n"
-        "Кидай мне ссылку на YouTube — "
-        "я попробую скачать видео и отправить его сюда."
+        "Кидай ссылку на YouTube — "
+        "я попробую скачать видео."
     )
 
 
@@ -73,7 +76,7 @@ async def handle_message(message: types.Message):
 
     if not is_youtube_url(url):
         await message.answer(
-            "❌ Нужна ссылка на YouTube."
+            "❌ Пришли ссылку на YouTube."
         )
         return
 
@@ -84,6 +87,7 @@ async def handle_message(message: types.Message):
     video_path = None
 
     try:
+
         video_path = await asyncio.to_thread(
             download_video,
             url
@@ -91,16 +95,15 @@ async def handle_message(message: types.Message):
 
         file_size = video_path.stat().st_size
 
-        # Telegram Bot API имеет ограничение на отправку файлов.
-        # Оставляем запас ниже лимита.
         if file_size > 49 * 1024 * 1024:
             await status.edit_text(
-                "❌ Видео получилось слишком большим для отправки."
+                "❌ Видео получилось больше 49 МБ.\n"
+                "Пока попробуй более короткое видео."
             )
             return
 
         await status.edit_text(
-            "📤 Готово. Отправляю видео..."
+            "📤 Видео готово. Отправляю..."
         )
 
         await message.answer_video(
@@ -115,8 +118,7 @@ async def handle_message(message: types.Message):
         print("ERROR:", repr(error))
 
         await status.edit_text(
-            "❌ Не получилось скачать это видео.\n\n"
-            "Попробуй другую ссылку."
+            "❌ Не получилось скачать это видео."
         )
 
     finally:
@@ -128,9 +130,57 @@ async def handle_message(message: types.Message):
                 pass
 
 
+async def health(request):
+    return web.Response(text="OK")
+
+
 async def main():
+
+    app = web.Application()
+
+    app.router.add_get("/", health)
+
+    webhook_url = os.getenv("RENDER_EXTERNAL_URL")
+
+    if not webhook_url:
+        raise RuntimeError(
+            "RENDER_EXTERNAL_URL не найден"
+        )
+
+    webhook_url += WEBHOOK_PATH
+
+    await bot.set_webhook(
+        webhook_url,
+        drop_pending_updates=True
+    )
+
+    async def webhook_handler(request):
+        data = await request.json()
+        update = types.Update.model_validate(data)
+        await dp.feed_update(bot, update)
+        return web.Response(text="OK")
+
+    app.router.add_post(
+        WEBHOOK_PATH,
+        webhook_handler
+    )
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+
+    site = web.TCPSite(
+        runner,
+        "0.0.0.0",
+        PORT
+    )
+
+    await site.start()
+
     print("🤖 Бот запущен!")
-    await dp.start_polling(bot)
+    print(f"🌐 Порт: {PORT}")
+
+    while True:
+        await asyncio.sleep(3600)
 
 
 if __name__ == "__main__":
