@@ -27,8 +27,6 @@ if not RENDER_EXTERNAL_URL:
 DOWNLOAD_DIR = Path("downloads")
 DOWNLOAD_DIR.mkdir(exist_ok=True)
 
-COOKIES_FILE = Path("/tmp/youtube_cookies.txt")
-
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
@@ -42,27 +40,14 @@ def is_youtube_url(text: str) -> bool:
     )
 
 
-def check_cookies():
-    if not COOKIES_FILE.exists():
-        raise RuntimeError(
-            "Файл YouTube cookies не найден: "
-            f"{COOKIES_FILE}"
-        )
-
-    if COOKIES_FILE.stat().st_size == 0:
-        raise RuntimeError("Файл YouTube cookies пустой")
-
-
 def download_video(url: str) -> Path:
-    check_cookies()
 
     output = str(
         DOWNLOAD_DIR / "%(id)s.%(ext)s"
     )
 
     options = {
-        # ВАЖНО:
-        # Берём готовый mp4-файл, чтобы не требовался ffmpeg.
+        # Берём готовый файл, чтобы не требовался ffmpeg
         "format": (
             "best[ext=mp4][height<=720]/"
             "best[height<=720]/"
@@ -73,7 +58,7 @@ def download_video(url: str) -> Path:
 
         "noplaylist": True,
 
-        # YouTube
+        # YouTube + bgutil PO Token
         "extractor_args": {
             "youtube": {
                 "player_client": ["mweb"],
@@ -83,27 +68,21 @@ def download_video(url: str) -> Path:
             },
         },
 
-        # Cookies отдельного YouTube-аккаунта
-        "cookiefile": str(COOKIES_FILE),
-
-        # Не скачивать огромные файлы
-        "max_filesize": 49 * 1024 * 1024,
-
-        # Сетевые настройки
-        "retries": 3,
-        "fragment_retries": 3,
-
-        # Логи
+        # Логи нужны нам для нормальной диагностики
         "quiet": False,
         "no_warnings": False,
+
+        "retries": 3,
+        "fragment_retries": 3,
     }
 
-    print("=== YT-DLP START ===")
+    print("================================")
+    print("YT-DLP DOWNLOAD")
     print("URL:", url)
-    print("Cookies:", COOKIES_FILE)
-    print("=== YT-DLP OPTIONS ===")
+    print("================================")
 
     with yt_dlp.YoutubeDL(options) as ydl:
+
         info = ydl.extract_info(
             url,
             download=True,
@@ -112,12 +91,14 @@ def download_video(url: str) -> Path:
         video_id = info["id"]
 
     files = list(
-        DOWNLOAD_DIR.glob(f"{video_id}.*")
+        DOWNLOAD_DIR.glob(
+            f"{video_id}.*"
+        )
     )
 
     if not files:
         raise FileNotFoundError(
-            "После скачивания файл не найден"
+            "Видео скачалось, но файл не найден"
         )
 
     return files[0]
@@ -125,13 +106,17 @@ def download_video(url: str) -> Path:
 
 @dp.message(CommandStart())
 async def start(message: types.Message):
+
     await message.answer(
-        "🎬 Кидай ссылку на YouTube."
+        "🎬 Привет!\n\n"
+        "Кидай ссылку на YouTube."
     )
 
 
 @dp.message()
-async def handle_message(message: types.Message):
+async def handle_message(
+    message: types.Message
+):
 
     if not message.text:
         return
@@ -139,9 +124,11 @@ async def handle_message(message: types.Message):
     url = message.text.strip()
 
     if not is_youtube_url(url):
+
         await message.answer(
             "❌ Пришли ссылку на YouTube."
         )
+
         return
 
     status = await message.answer(
@@ -159,10 +146,13 @@ async def handle_message(message: types.Message):
 
         file_size = video_path.stat().st_size
 
+        # Telegram Bot API: держим запас ниже лимита
         if file_size > 49 * 1024 * 1024:
+
             await status.edit_text(
                 "❌ Видео получилось больше 49 МБ."
             )
+
             return
 
         await status.edit_text(
@@ -181,31 +171,59 @@ async def handle_message(message: types.Message):
     except Exception as error:
 
         print(
+            "================================"
+        )
+
+        print(
             "DOWNLOAD ERROR:",
             repr(error),
         )
 
-        await status.edit_text(
-            "❌ Не получилось скачать видео."
+        print(
+            "================================"
         )
+
+        try:
+
+            await status.edit_text(
+                "❌ Не получилось скачать видео."
+            )
+
+        except Exception:
+            pass
 
     finally:
 
-        if video_path and video_path.exists():
+        if (
+            video_path
+            and video_path.exists()
+        ):
+
             try:
                 video_path.unlink()
-            except Exception:
-                pass
+
+            except Exception as error:
+
+                print(
+                    "FILE DELETE ERROR:",
+                    repr(error),
+                )
 
 
-async def health(request):
-    return web.Response(text="OK")
+async def health(
+    request
+):
+
+    return web.Response(
+        text="OK"
+    )
 
 
 async def main():
 
     app = web.Application()
 
+    # Render health check
     app.router.add_get(
         "/",
         health,
@@ -221,7 +239,9 @@ async def main():
         drop_pending_updates=True,
     )
 
-    async def webhook_handler(request):
+    async def webhook_handler(
+        request
+    ):
 
         data = await request.json()
 
@@ -259,12 +279,18 @@ async def main():
     print("🤖 BOT STARTED")
     print("PORT:", PORT)
     print("WEBHOOK:", webhook_url)
-    print("COOKIES:", COOKIES_FILE)
+    print("BGUTIL: http://127.0.0.1:4416")
     print("================================")
 
     while True:
-        await asyncio.sleep(3600)
+
+        await asyncio.sleep(
+            3600
+        )
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+
+    asyncio.run(
+        main()
+    )
