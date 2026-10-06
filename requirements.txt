@@ -2,3 +2,4 @@ aiogram
 yt-dlp[default]
 python-dotenv
 aiohttp
+bgutil-ytdlp-pot-provider
