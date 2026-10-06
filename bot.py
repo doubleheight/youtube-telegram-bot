@@ -47,7 +47,6 @@ def download_video(url: str) -> Path:
     )
 
     options = {
-        # Берём готовый файл, чтобы не требовался ffmpeg
         "format": (
             "best[ext=mp4][height<=720]/"
             "best[height<=720]/"
@@ -58,7 +57,6 @@ def download_video(url: str) -> Path:
 
         "noplaylist": True,
 
-        # YouTube + bgutil PO Token
         "extractor_args": {
             "youtube": {
                 "player_client": ["mweb"],
@@ -68,9 +66,9 @@ def download_video(url: str) -> Path:
             },
         },
 
-        # Логи нужны нам для нормальной диагностики
         "quiet": False,
         "no_warnings": False,
+        "verbose": True,
 
         "retries": 3,
         "fragment_retries": 3,
@@ -146,7 +144,6 @@ async def handle_message(
 
         file_size = video_path.stat().st_size
 
-        # Telegram Bot API: держим запас ниже лимита
         if file_size > 49 * 1024 * 1024:
 
             await status.edit_text(
@@ -210,9 +207,7 @@ async def handle_message(
                 )
 
 
-async def health(
-    request
-):
+async def health(request):
 
     return web.Response(
         text="OK"
@@ -223,7 +218,6 @@ async def main():
 
     app = web.Application()
 
-    # Render health check
     app.router.add_get(
         "/",
         health,
@@ -239,9 +233,7 @@ async def main():
         drop_pending_updates=True,
     )
 
-    async def webhook_handler(
-        request
-    ):
+    async def webhook_handler(request):
 
         data = await request.json()
 
@@ -280,17 +272,13 @@ async def main():
     print("PORT:", PORT)
     print("WEBHOOK:", webhook_url)
     print("BGUTIL: http://127.0.0.1:4416")
+    print("VERBOSE: ON")
     print("================================")
 
     while True:
 
-        await asyncio.sleep(
-            3600
-        )
+        await asyncio.sleep(3600)
 
 
 if __name__ == "__main__":
-
-    asyncio.run(
-        main()
-    )
+    asyncio.run(main())
