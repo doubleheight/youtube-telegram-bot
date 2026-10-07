@@ -17,11 +17,24 @@ RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")
 
 WEBHOOK_PATH = "/webhook"
 
+COOKIES_FILE = "/etc/secrets/cookies.txt"
+
+YOUTUBE_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/155.0.0.0 Safari/537.36"
+)
+
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN не найден")
 
 if not RENDER_EXTERNAL_URL:
     raise RuntimeError("RENDER_EXTERNAL_URL не найден")
+
+if not os.path.exists(COOKIES_FILE):
+    raise RuntimeError(
+        f"Файл cookies не найден: {COOKIES_FILE}"
+    )
 
 
 DOWNLOAD_DIR = Path("downloads")
@@ -57,6 +70,12 @@ def download_video(url: str) -> Path:
 
         "noplaylist": True,
 
+        "cookiefile": COOKIES_FILE,
+
+        "http_headers": {
+            "User-Agent": YOUTUBE_USER_AGENT,
+        },
+
         "extractor_args": {
             "youtube": {
                 "player_client": ["mweb"],
@@ -77,6 +96,8 @@ def download_video(url: str) -> Path:
     print("================================")
     print("YT-DLP DOWNLOAD")
     print("URL:", url)
+    print("COOKIES: ON")
+    print("USER-AGENT: Chrome 155")
     print("================================")
 
     with yt_dlp.YoutubeDL(options) as ydl:
@@ -197,6 +218,7 @@ async def handle_message(
         ):
 
             try:
+
                 video_path.unlink()
 
             except Exception as error:
@@ -272,6 +294,7 @@ async def main():
     print("PORT:", PORT)
     print("WEBHOOK:", webhook_url)
     print("BGUTIL: http://127.0.0.1:4416")
+    print("COOKIES: ON")
     print("VERBOSE: ON")
     print("================================")
 
